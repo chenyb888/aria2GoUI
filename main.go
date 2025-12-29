@@ -55,7 +55,8 @@ func main() {
 	// 测试连接
 	if err := testConnection(aria2Client); err != nil {
 		log.Printf("连接 aria2 失败: %v", err)
-		// TODO: 显示连接设置对话框
+		// 显示连接设置对话框
+		uiApp.ShowConnectionDialog()
 	} else {
 		log.Println("成功连接到 aria2")
 	}
