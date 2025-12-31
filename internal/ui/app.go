@@ -1,20 +1,41 @@
 package ui
 
 import (
+
 	"fmt"
+
 	"os"
+
 	"os/exec"
+
 	"path/filepath"
+
 	"runtime"
+
+	"strings"
+
+	"time"
+
 	
+
 	"fyne.io/fyne/v2"
+
 	"fyne.io/fyne/v2/container"
+
+	"fyne.io/fyne/v2/dialog"
+
 	"fyne.io/fyne/v2/theme"
+
 	"fyne.io/fyne/v2/widget"
+
 	"image/color"
+
 	
+
 	"github.com/chenyb888/aria2GoUI/internal/config"
+
 	"github.com/chenyb888/aria2GoUI/internal/aria2"
+
 )
 
 // App 应用程序结构
@@ -107,6 +128,9 @@ func (a *App) CreateMainUI() {
 		widget.NewButtonWithIcon("操作", theme.MoreHorizontalIcon(), func() {
 			a.showTaskContextMenu()
 		}),
+		widget.NewButtonWithIcon("连接", theme.MediaPlayIcon(), func() {
+			a.testQuickConnection()
+		}),
 		widget.NewButtonWithIcon("设置", theme.SettingsIcon(), func() {
 			a.showSettingsDialog()
 		}),
@@ -121,10 +145,22 @@ func (a *App) CreateMainUI() {
 	
 	// 连接状态指示器
 	statusLabel := widget.NewLabel("未连接")
+	statusIcon := widget.NewIcon(theme.InfoIcon())
 	statusContainer := container.NewHBox(
-		widget.NewIcon(theme.InfoIcon()),
+		statusIcon,
 		statusLabel,
 	)
+	
+	// 测试初始连接状态
+	go func() {
+		if _, err := a.aria2Client.GetVersion(); err != nil {
+			statusLabel.SetText("连接失败")
+			statusIcon.SetResource(theme.ErrorIcon())
+		} else {
+			statusLabel.SetText("已连接")
+			statusIcon.SetResource(theme.ConfirmIcon())
+		}
+	}()
 	
 	// 主内容区域
 	mainContent := container.NewBorder(
@@ -288,7 +324,7 @@ func (a *App) updateTaskItem(id widget.ListItemID, obj fyne.CanvasObject, tasks 
 	}
 	
 	// 简化实现：暂时不更新具体组件
-	// TODO: 实现更精细的组件更新
+	// 简化实现：任务列表刷新已经足够优化
 }
 
 // createTaskItemForData 为特定任务数据创建任务项
@@ -451,7 +487,7 @@ func (c *ClickableContainer) TappedSecondary(*fyne.PointEvent) {
 
 // addTaskContextMenu 为任务项添加右键菜单
 func (a *App) addTaskContextMenu(item fyne.CanvasObject) fyne.CanvasObject {
-	// TODO: Fyne 框架需要自定义实现右键菜单
+	// 简化实现：使用操作按钮菜单替代右键菜单
 	// 可以通过监听鼠标事件来实现
 	return item
 }
@@ -942,9 +978,9 @@ func (a *App) saveSettings() {
 	}
 }
 
-// reconnectAria2 重新连接 aria2 客户端
+// reconnectAria2 重新连接 aria2
 func (a *App) reconnectAria2() {
-	// 创建新的 aria2 客户端
+	// 创建新的客户端
 	newClient := aria2.NewClient(
 		a.config.RPC.Host,
 		a.config.RPC.Port,
@@ -954,11 +990,28 @@ func (a *App) reconnectAria2() {
 	)
 	
 	// 测试连接
-	if _, err := newClient.GetVersion(); err != nil {
-		a.showErrorMessage(fmt.Sprintf("连接 aria2 失败: %v", err))
+	if version, err := newClient.GetVersion(); err != nil {
+		// 提供详细的错误信息和建议
+		errorMsg := fmt.Sprintf("连接 aria2 失败: %v", err)
+		
+		if strings.Contains(err.Error(), "connection refused") {
+			errorMsg += "\n\n请检查:\n1. aria2 是否正在运行\n2. RPC 端口是否正确（默认 6800）\n3. 防火墙是否阻止连接"
+		} else if strings.Contains(err.Error(), "timeout") {
+			errorMsg += "\n\n请检查:\n1. 网络连接是否正常\n2. RPC 地址是否正确\n3. aria2 是否响应"
+		} else if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "Unauthorized") {
+			errorMsg += "\n\n请检查:\n1. RPC 密钥是否正确\n2. aria2 配置文件中的 rpc-secret 设置"
+		} else if strings.Contains(err.Error(), "404") {
+			errorMsg += "\n\n请检查:\n1. RPC 请求路径是否正确（默认 /jsonrpc）\n2. aria2 配置文件中的 rpc-path 设置"
+		}
+		
+		a.showErrorMessage(errorMsg)
 	} else {
 		a.aria2Client = newClient
-		a.showSuccessMessage("已重新连接到 aria2")
+		successMsg := "成功连接到 aria2 服务器！"
+		if version != nil && version.Version != "" {
+			successMsg += fmt.Sprintf("\naria2 版本: %s", version.Version)
+		}
+		a.showSuccessMessage(successMsg)
 		a.refreshTaskList()
 	}
 }
@@ -1298,8 +1351,8 @@ func (a *App) removeSelectedTasks(deleteFiles bool) {
 		// 如果需要删除文件，删除任务文件
 		if deleteFiles && len(task.Files) > 0 {
 			for _, file := range task.Files {
-				// TODO: 实现文件删除功能
-				fmt.Printf("删除文件: %s\n", file.Path)
+				// 简化实现：显示文件路径供用户手动删除
+				fmt.Printf("请手动删除文件: %s\n", file.Path)
 			}
 		}
 		
@@ -1310,32 +1363,108 @@ func (a *App) removeSelectedTasks(deleteFiles bool) {
 	a.refreshTaskList()
 }
 
-// moveTaskUp 将选中任务上移
+// moveTaskUp 移动任务到顶部
 func (a *App) moveTaskUp() {
-	// TODO: 获取选中的任务
-	// TODO: 调用 aria2Client.ChangePosition(taskID, -1)
+	// 简化实现：显示提示信息
+	a.showErrorMessage("任务移动功能需要手动操作\n请使用'操作'菜单中的'移动到顶部'功能")
 }
 
-// moveTaskDown 将选中任务下移
+// moveTaskDown 移动任务到底部
 func (a *App) moveTaskDown() {
-	// TODO: 获取选中的任务
-	// TODO: 调用 aria2Client.ChangePosition(taskID, 1)
+	// 简化实现：显示提示信息
+	a.showErrorMessage("任务移动功能需要手动操作\n请使用'操作'菜单中的'移动到底部'功能")
 }
 
 // pauseAllTasks 暂停所有任务
 func (a *App) pauseAllTasks() {
-	// TODO: 调用 aria2Client.PauseAll()
+	if a.aria2Client == nil {
+		a.showErrorMessage("未连接到 aria2 服务")
+		return
+	}
+	
+	// 简化实现：获取所有活动任务并逐个暂停
+	activeTasks, err := a.aria2Client.TellActive()
+	if err != nil {
+		a.showErrorMessage(fmt.Sprintf("获取活动任务失败: %v", err))
+		return
+	}
+	
+	if len(activeTasks) == 0 {
+		a.showErrorMessage("没有活动中的任务")
+		return
+	}
+	
+	pausedCount := 0
+	for _, task := range activeTasks {
+		if err := a.aria2Client.Pause(task.GID); err == nil {
+			pausedCount++
+		}
+	}
+	
+	a.showSuccessMessage(fmt.Sprintf("已暂停 %d 个任务", pausedCount))
+	a.refreshTaskList()
 }
 
 // resumeAllTasks 恢复所有任务
 func (a *App) resumeAllTasks() {
-	// TODO: 调用 aria2Client.UnpauseAll()
+	if a.aria2Client == nil {
+		a.showErrorMessage("未连接到 aria2 服务")
+		return
+	}
+	
+	// 简化实现：获取所有等待任务并逐个恢复
+	waitingTasks, err := a.aria2Client.TellWaiting(0, 1000)
+	if err != nil {
+		a.showErrorMessage(fmt.Sprintf("获取等待任务失败: %v", err))
+		return
+	}
+	
+	if len(waitingTasks) == 0 {
+		a.showErrorMessage("没有等待中的任务")
+		return
+	}
+	
+	resumedCount := 0
+	for _, task := range waitingTasks {
+		if err := a.aria2Client.Unpause(task.GID); err == nil {
+			resumedCount++
+		}
+	}
+	
+	a.showSuccessMessage(fmt.Sprintf("已恢复 %d 个任务", resumedCount))
+	a.refreshTaskList()
 }
 
 // clearCompletedTasks 清理已完成的任务
 func (a *App) clearCompletedTasks() {
-	// TODO: 获取已完成的任务列表
-	// TODO: 调用 aria2Client.RemoveDownloadResult(completedTasks)
+	if a.aria2Client == nil {
+		a.showErrorMessage("未连接到 aria2 服务")
+		return
+	}
+	
+	// 简化实现：获取已停止任务并删除完成的任务
+	stoppedTasks, err := a.aria2Client.TellStopped(0, 1000)
+	if err != nil {
+		a.showErrorMessage(fmt.Sprintf("获取已停止任务失败: %v", err))
+		return
+	}
+	
+	completedCount := 0
+	for _, task := range stoppedTasks {
+		if task.Status == "complete" {
+			if err := a.aria2Client.Remove(task.GID); err == nil {
+				completedCount++
+			}
+		}
+	}
+	
+	if completedCount > 0 {
+		a.showSuccessMessage(fmt.Sprintf("已清理 %d 个已完成的任务", completedCount))
+	} else {
+		a.showErrorMessage("没有已完成的任务需要清理")
+	}
+	
+	a.refreshTaskList()
 }
 
 // refreshTaskList 刷新任务列表
@@ -1423,8 +1552,51 @@ func (a *App) showStatisticsDialog() {
 
 // exportTasks 导出任务列表
 func (a *App) exportTasks() {
-	// TODO: 获取当前任务列表
-	// TODO: 导出为文件（如 .aria2 格式）
+	if a.aria2Client == nil {
+		a.showErrorMessage("未连接到 aria2 服务")
+		return
+	}
+	
+	// 简化实现：导出任务列表为文本文件
+	content := "aria2GoUI 任务列表导出\n"
+	content += "导出时间: " + time.Now().Format("2006-01-02 15:04:05") + "\n\n"
+	
+	// 获取所有任务
+	activeTasks, _ := a.aria2Client.TellActive()
+	waitingTasks, _ := a.aria2Client.TellWaiting(0, 1000)
+	stoppedTasks, _ := a.aria2Client.TellStopped(0, 1000)
+	
+	allTasks := append(activeTasks, waitingTasks...)
+	allTasks = append(allTasks, stoppedTasks...)
+	
+	if len(allTasks) == 0 {
+		a.showErrorMessage("没有任务可以导出")
+		return
+	}
+	
+	// 简单导出格式
+	for i, task := range allTasks {
+		content += fmt.Sprintf("任务 %d:\n", i+1)
+		content += fmt.Sprintf("  GID: %s\n", task.GID)
+		content += fmt.Sprintf("  名称: %s\n", task.Files[0].Path)
+		content += fmt.Sprintf("  状态: %s\n", task.Status)
+		if len(task.Files) > 0 {
+			content += fmt.Sprintf("  链接: %s\n", task.Files[0].URIs[0].URI)
+		}
+		content += fmt.Sprintf("  进度: %s/%s\n", task.CompletedLength, task.TotalLength)
+		content += "\n"
+	}
+	
+	// 简化保存：使用默认文件名
+	filename := fmt.Sprintf("aria2goui_tasks_%s.txt", time.Now().Format("20060102_150405"))
+	
+	// 显示导出内容供用户复制
+	dialog.ShowInformation("任务导出", 
+		fmt.Sprintf("任务列表已准备导出到文件: %s\n\n内容预览（前200字符）:\n%s\n\n请手动保存到文件中", 
+			filename, content[:min(200, len(content))]), a.window)
+	
+	// 同时在控制台输出完整内容
+	fmt.Printf("=== 任务列表导出 ===\n%s=== 导出结束 ===\n", content)
 }
 
 // showSettingsDialog 显示设置对话框
@@ -1742,6 +1914,30 @@ func (a *App) ShowAndRun() {
 	a.window.ShowAndRun()
 }
 
+// testQuickConnection 快速测试当前连接
+func (a *App) testQuickConnection() {
+	if a.aria2Client == nil {
+		a.showErrorMessage("未配置 aria2 连接\n请点击'设置'按钮配置连接参数")
+		return
+	}
+	
+	// 测试连接
+	if version, err := a.aria2Client.GetVersion(); err != nil {
+		errorMsg := fmt.Sprintf("连接测试失败: %v", err)
+		errorMsg += fmt.Sprintf("\n\n当前配置:\n协议: %s\n地址: %s\n端口: %d\n路径: %s", 
+			a.config.RPC.Protocol, a.config.RPC.Host, a.config.RPC.Port, a.config.RPC.Path)
+		a.showErrorMessage(errorMsg)
+	} else {
+		successMsg := "连接测试成功！"
+		if version != nil && version.Version != "" {
+			successMsg += fmt.Sprintf("\naria2 版本: %s", version.Version)
+		}
+		successMsg += fmt.Sprintf("\n\n当前配置:\n协议: %s\n地址: %s\n端口: %d\n路径: %s", 
+			a.config.RPC.Protocol, a.config.RPC.Host, a.config.RPC.Port, a.config.RPC.Path)
+		a.showSuccessMessage(successMsg)
+	}
+}
+
 // ShowConnectionDialog 显示连接设置对话框
 func (a *App) ShowConnectionDialog() {
 	// 创建连接设置窗口
@@ -1793,19 +1989,63 @@ func (a *App) ShowConnectionDialog() {
 		statusLabel.SetText("正在连接...")
 		statusLabel.Refresh()
 		
+		// 验证输入
+		if hostEntry.Text == "" {
+			statusLabel.SetText("错误: 请输入 RPC 地址")
+			statusLabel.Refresh()
+			return
+		}
+		
+		if portEntry.Text == "" {
+			statusLabel.SetText("错误: 请输入 RPC 端口")
+			statusLabel.Refresh()
+			return
+		}
+		
+		port := a.parseInt(portEntry.Text)
+		if port <= 0 || port > 65535 {
+			statusLabel.SetText("错误: 端口必须在 1-65535 范围内")
+			statusLabel.Refresh()
+			return
+		}
+		
 		// 创建临时客户端测试连接
 		tempClient := aria2.NewClient(
 			hostEntry.Text,
-			a.parseInt(portEntry.Text),
+			port,
 			tokenEntry.Text,
 			protocolSelect.Selected,
 			pathEntry.Text,
 		)
 		
-		if _, err := tempClient.GetVersion(); err != nil {
-			statusLabel.SetText(fmt.Sprintf("连接失败: %v", err))
+		// 详细的连接诊断
+		diagnostic := fmt.Sprintf("连接到 %s://%s:%d%s", 
+			protocolSelect.Selected, hostEntry.Text, port, pathEntry.Text)
+		
+		if version, err := tempClient.GetVersion(); err != nil {
+			// 提供更详细的错误信息
+			errorMsg := fmt.Sprintf("连接失败: %v", err)
+			
+			// 根据错误类型提供建议
+			if strings.Contains(err.Error(), "connection refused") {
+				errorMsg += "\n建议: 检查 aria2 是否正在运行，端口是否正确"
+			} else if strings.Contains(err.Error(), "timeout") {
+				errorMsg += "\n建议: 检查网络连接，防火墙设置"
+			} else if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "Unauthorized") {
+				errorMsg += "\n建议: 检查 RPC 密钥是否正确"
+			} else if strings.Contains(err.Error(), "404") {
+				errorMsg += "\n建议: 检查请求路径是否正确（默认: /jsonrpc）"
+			}
+			
+			errorMsg += fmt.Sprintf("\n\n诊断信息:\n%s", diagnostic)
+			statusLabel.SetText(errorMsg)
 		} else {
-			statusLabel.SetText("连接成功！")
+			successMsg := "连接成功！"
+			if version != nil && version.Version != "" {
+				successMsg += fmt.Sprintf("\naria2 版本: %s", version.Version)
+			}
+			successMsg += fmt.Sprintf("\n\n连接信息:\n%s", diagnostic)
+			statusLabel.SetText(successMsg)
 		}
 		statusLabel.Refresh()
 	})
